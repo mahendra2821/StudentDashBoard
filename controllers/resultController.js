@@ -3,90 +3,95 @@ const Result = require('../models/Result');
 
 
 
-////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 
 const addOrUpdateResults = async (req, res) => {
-    try {
-      const { enrollmentNumber, studentName, semester, subjects } = req.body;
-  
-      if (!enrollmentNumber || !studentName || !semester || !subjects) {
-        return res.status(400).json({ message: 'All fields are required' });
-      }
-  
-      if (semester < 1 || semester >=8) {
-        return res.status(400).json({ message: 'Semester must be between 1 and 8' });
-      }
-  
-      if (subjects.length > 11) {
-        return res.status(400).json({ message: 'A semester can have up to 11 subjects' });
-      }
-  
-      const invalidSubjects = subjects.some(
-        (subject) => !subject.subjectCode || !subject.name || !subject.grade || !subject.credits
-      );
-  
-      if (invalidSubjects) {
-        return res.status(400).json({
-          message: 'Each subject must have a subjectCode, name, grade, and credits',
-        });
-      }
-  
-      const gradePoints = { 'A+': 10, A: 9, 'B+': 8, B: 7, C: 6, D: 5, F: 0, ABSENT: 0 }; // Add 'Absent' with 0 points
-      let totalCredits = 0;
-      let totalGradePoints = 0;
-  
-      const backlogs = subjects.filter((subject) => subject.grade === 'F' || subject.grade === 'ABSENT').length; // Count "Absent" as a backlog
-      const status = backlogs > 0 ? 'Fail' : 'Pass';
-  
-      subjects.forEach((subject) => {
-        totalCredits += subject.credits;
-        totalGradePoints += (gradePoints[subject.grade] || 0) * subject.credits; // Default to 0 if grade not found
-      });
-  
-      const sgpa = totalCredits === 0 ? 0 : parseFloat((totalGradePoints / totalCredits).toFixed(2));
-  
-      let result = await Result.findOne({ enrollmentNumber });
-  
-      if (!result) {
+  try {
+    const { enrollmentNumber, studentName, semester, subjects } = req.body;
 
-        result = new Result({ enrollmentNumber, studentName, semesters: [] });
-      } else {
-        result.studentName = studentName;
-      }
-  
-      // Update or add the semester results
-      const semesterIndex = result.semesters.findIndex((s) => s.semester === semester);
-  
-      if (semesterIndex >= 0) {
-        // Update existing semester
-        const previousBacklogs = result.semesters[semesterIndex].backlogs;
-        result.semesters[semesterIndex] = { semester, subjects, sgpa, backlogs, status };
-        result.totalBacklogs += backlogs - previousBacklogs; // Adjust totalBacklogs
-      } else {
-        // Add new semester
-        result.semesters.push({ semester, subjects, sgpa, backlogs, status });
-        result.totalBacklogs += backlogs;
-      }
-  
-      // Do not recalculate CGPA for previous semesters
-      const totalSGPA = result.semesters.reduce((sum, sem) => (sem.semester === semester ? sum + sgpa : sum + sem.sgpa), 0);
-      const totalSemesters = result.semesters.length;
-  
-      const newCGPA = parseFloat((totalSGPA / totalSemesters).toFixed(2));
-      result.semesters.forEach((sem) => {
-        if (sem.semester === semester) {
-          sem.cgpa = newCGPA;
-        }
-      });
-  
-      await result.save();
-  
-      res.status(200).json({ message: 'Results updated successfully', result });
-    } catch (error) {
-      res.status(500).json({ error: error.message });
+    if (!enrollmentNumber || !studentName || !semester || !subjects) {
+      return res.status(400).json({ message: 'All fields are required' });
     }
-  };
+
+    if (semester < 1 || semester >= 8) {
+      return res.status(400).json({ message: 'Semester must be between 1 and 8' });
+    }
+
+    if (subjects.length > 11) {
+      return res.status(400).json({ message: 'A semester can have up to 11 subjects' });
+    }
+
+    const invalidSubjects = subjects.some(
+      (subject) => !subject.subjectCode || !subject.name || !subject.grade || !subject.credits
+    );
+
+    if (invalidSubjects) {
+      return res.status(400).json({
+        message: 'Each subject must have a subjectCode, name, grade, and credits',
+      });
+    }
+
+    const gradePoints = { 'A+': 10, A: 9, 'B+': 8, B: 7, C: 6, D: 5, F: 0, ABSENT: 0 }; // Add 'Absent' with 0 points
+    let totalCredits = 0;
+    let totalGradePoints = 0;
+
+    const backlogs = subjects.filter((subject) => subject.grade === 'F' || subject.grade === 'ABSENT').length; // Count "Absent" as a backlog
+    const status = backlogs > 0 ? 'Fail' : 'Pass';
+
+    // Convert credits to integers
+    subjects.forEach((subject) => {
+      subject.credits = parseInt(subject.credits, 10); // Convert credits to integer
+      totalCredits += subject.credits;
+      totalGradePoints += (gradePoints[subject.grade] || 0) * subject.credits; // Default to 0 if grade not found
+    });
+
+    const sgpa = totalCredits === 0 ? 0 : parseFloat((totalGradePoints / totalCredits).toFixed(2));
+
+    let result = await Result.findOne({ enrollmentNumber });
+
+    if (!result) {
+      result = new Result({ enrollmentNumber, studentName, semesters: [] });
+    } else {
+      result.studentName = studentName;
+    }
+
+    // Update or add the semester results
+    const semesterIndex = result.semesters.findIndex((s) => s.semester === semester);
+
+    if (semesterIndex >= 0) {
+      // Update existing semester
+      const previousBacklogs = result.semesters[semesterIndex].backlogs;
+      result.semesters[semesterIndex] = { semester, subjects, sgpa, backlogs, status };
+      result.totalBacklogs += backlogs - previousBacklogs; // Adjust totalBacklogs
+    } else {
+      // Add new semester
+      result.semesters.push({ semester, subjects, sgpa, backlogs, status });
+      result.totalBacklogs += backlogs;
+    }
+
+    // Do not recalculate CGPA for previous semesters
+    const totalSGPA = result.semesters.reduce((sum, sem) => (sem.semester === semester ? sum + sgpa : sum + sem.sgpa), 0);
+    const totalSemesters = result.semesters.length;
+
+    const newCGPA = parseFloat((totalSGPA / totalSemesters).toFixed(2));
+    result.semesters.forEach((sem) => {
+      if (sem.semester === semester) {
+        sem.cgpa = newCGPA;
+      }
+    });
+
+    await result.save();
+
+    res.status(200).json({ message: 'Results updated successfully', result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
   
+
+
 
 
 //////////////////////////////////////////////////////////////////////   
@@ -132,8 +137,7 @@ const getResultsSingle = async (req, res) => {
   
   /////////////////////////////////////////////////////////////////////////////////////////// 
 
-
-const updateBacklog = async (req, res) => {
+  const updateBacklog = async (req, res) => {
     try {
       const { enrollmentNumber, semester } = req.params;
       const { subjectName, newGrade, newCredits } = req.body;
@@ -166,8 +170,13 @@ const updateBacklog = async (req, res) => {
         subjectData.grade = newGrade;
       }
       if (newCredits) {
-        subjectData.credits = newCredits;
+        subjectData.credits = parseInt(newCredits, 10); // Convert newCredits to integer
       }
+  
+      // Ensure all subject credits are integers
+      semesterData.subjects.forEach((sub) => {
+        sub.credits = parseInt(sub.credits, 10);
+      });
   
       // Recalculate SGPA for the semester
       const gradePoints = { 'A+': 10, A: 9, 'B+': 8, B: 7, C: 6, D: 5, F: 0 };
@@ -204,7 +213,7 @@ const updateBacklog = async (req, res) => {
       res.status(500).json({ error: error.message });
     }
   };
-  ///////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
 
   const deleteSemester = async (req, res) => {
     try {
