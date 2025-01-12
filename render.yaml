@@ -1,0 +1,3 @@
+runtime: node
+env:
+  NODE_VERSION: "22.12.0"

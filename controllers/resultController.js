@@ -13,7 +13,7 @@ const addOrUpdateResults = async (req, res) => {
         return res.status(400).json({ message: 'All fields are required' });
       }
   
-      if (semester < 1 || semester > 8) {
+      if (semester < 1 || semester >=8) {
         return res.status(400).json({ message: 'Semester must be between 1 and 8' });
       }
   
